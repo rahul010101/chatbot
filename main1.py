@@ -4,7 +4,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 import pdfkit
 from urllib.parse import urlparse, parse_qs
 
-TOKEN: Final = '7189718230:AAHmtNFc2alhCbSM2jQR47K_ijjT3kVk7Os'
+TOKEN: Final = 'YOUR_BOT_TOKEN'
 BOT_USERNAME: Final = '@rahulnai_bot'
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
