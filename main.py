@@ -1,55 +1,86 @@
-from typing import Final
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import asyncio
+import telegram
+from telegram.ext import MessageHandler, filters
+from google.generativeai import configure, GenerativeModel
 
-TOKEN: Final = 'YOUR_BOT_TOKen'
-BOT_USERNAME: Final = '@rahulnai_bot'
+# Configure API key
+configure(api_key="YOUR_AI_KEY")
 
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text('Hello! Thanks for chatting with me! I am a newchatbot!')
+# Set up the model
+generation_config = {
+    "temperature": 1,
+    "top_p": 0.95,
+    "top_k": 0,
+    "max_output_tokens": 8192,
+}
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text('''you can type /start or /help or just say 'hello' and 'how are you' ''')
+safety_settings = [
+    {
+        "category": "HARM_CATEGORY_HARASSMENT",
+        "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+    },
+    {
+        "category": "HARM_CATEGORY_HATE_SPEECH",
+        "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+    },
+    {
+        "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+        "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+    },
+    {
+        "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+        "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+    },
+]
 
-def handle_response(text: str) -> str:
-    processed: str = text. lower()
-    if 'hello' in processed:
-        return 'Hey there!'
-    if 'how are you' in processed:
-        return 'I am good!'
-    if 'i love python' in processed:
-        return 'Remember to subscribe!'
-    return 'I do not understand what you wrote...'
+model = GenerativeModel(model_name="gemini-1.5-pro-latest",
+                        generation_config=generation_config,
+                        safety_settings=safety_settings)
 
-async def handle_message(update: Update, context: ContextTypes. DEFAULT_TYPE):
-    message_type: str = update.message.chat.type
-    text: str = update.message.text
-    print(f'User ({update.message.chat.id}) in {message_type}: "{text}"')
-    if message_type == 'group':
-        if BOT_USERNAME in text:
-            new_text: str = text. replace(BOT_USERNAME, '').strip()
-            response: str = handle_response(new_text)
-        else:
-            return
+# Define a function to handle incoming messages
+async def message_handler(update):
+    if update.message.text:
+        user_input = update.message.text
+        try:
+            convo = model.start_chat(history=[])
+            convo.send_message(user_input)
+            ai_response = convo.last.text
+            await update.message.reply_text(ai_response)  # Await here
+        except ValueError as e:
+            if str(e) == "content must not be empty":
+                print("AI response is empty.")
+                # Handle the case where the AI response is empty, you can log the error or send a message to the user informing them about the issue
+            else:
+                print("An unexpected error occurred:", e)
+                # Handle other ValueError exceptions gracefully
+        except telegram.error.TimedOut as e:
+            print("Telegram API rate limit exceeded:", e)
+            # Reply with a message asking the user to try again later
+            await update.message.reply_text("Sorry, I'm currently experiencing high traffic. Please try again later.")
+        except Exception as e:
+            print("An unexpected error occurred:", type(e), e)  # Print the type of exception
+            # Handle other unexpected errors gracefully, you can log the error or send a message to the user informing them about the issue
     else:
-        response: str = handle_response (text)
-    print('Bot:', response)
-    await update.message.reply_text(response)
+        # If the message is not text, reply with a message asking the user to resend a text message
+        await update.message.reply_text("Sorry, I can only process text messages. Please send a text message.")
 
-async def error(update: Update, context: ContextTypes. DEFAULT_TYPE) :
-    print(f'Update {update} caused error {context.error}')
 
-if __name__ == '__main__':
-    print('Starting bot...')
-    app = Application.builder() .token(TOKEN).build()
-    # Commands
-    app.add_handler (CommandHandler('start', start_command) )
-    app.add_handler (CommandHandler('help', help_command))
-    # Messages
-    app.add_handler (MessageHandler(filters. TEXT, handle_message))
-    # Errors
-    app.add_error_handler (error)
-    # Polls the bot
-    print('Polling..')
-    app.run_polling(poll_interval=3)
-    
+
+
+
+
+async def main():
+    # Create a bot instance
+    bot = telegram.Bot(token="YOUR_TELEGRAM_TOKEN")
+
+    # Start message polling and register message handler
+    last_update_id = None
+    while True:
+        updates = await bot.get_updates(offset=last_update_id)
+        for update in updates:
+            if update.message:
+                await message_handler(update)
+                last_update_id = update.update_id + 1
+
+if __name__ == "__main__":
+    asyncio.run(main())
